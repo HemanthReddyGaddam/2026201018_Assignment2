@@ -8,6 +8,7 @@
 #include "builtin_ls.h"
 #include "builtin_pinfo.h"
 #include "builtin_search.h"
+#include "parser.h"
 #include <iostream>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -53,6 +54,7 @@ void execute_pipeline(char* command_str) {
         char* saveptr_arg = nullptr;
         char* arg_token = strtok_r(commands[i], " \t\n", &saveptr_arg);
         while (arg_token != nullptr && arg_count < 127) {
+            strip_outer_quotes(arg_token);
             args[arg_count++] = arg_token;
             arg_token = strtok_r(nullptr, " \t\n", &saveptr_arg);
         }

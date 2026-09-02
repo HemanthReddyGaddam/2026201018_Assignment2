@@ -11,6 +11,7 @@
 #include "signals.h"
 #include "autocomplete.h"
 #include "history.h"
+#include "parser.h"
 #include <iostream>
 #include <cstring>
 #include <unistd.h>
@@ -31,6 +32,7 @@ void process_command_line(char* line) {
             char* saveptr_arg;
             char* token = strtok_r(command, " \t\n", &saveptr_arg);
             while (token != nullptr && arg_count < 127) {
+                strip_outer_quotes(token);
                 args[arg_count++] = token;
                 token = strtok_r(nullptr, " \t\n", &saveptr_arg);
             }
