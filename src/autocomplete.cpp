@@ -226,7 +226,7 @@ static void handle_tab(char* buffer, int* pos, int max_len, bool* tab_list_shown
             }
             std::cout << '\n';
             std::cout.flush();
-            display_prompt();
+            displayprompt();
             std::cout << buffer;
             std::cout.flush();
             *tab_list_shown = true;
@@ -238,7 +238,7 @@ static void handle_tab(char* buffer, int* pos, int max_len, bool* tab_list_shown
 
 static void redraw_line(const char* buffer) {
     write_str("\r");
-    display_prompt();
+    displayprompt();
     std::cout << buffer << "\033[K";
     std::cout.flush();
 }

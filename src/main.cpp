@@ -71,6 +71,7 @@ void process_command_line(char* line) {
 }
 
 int main() {
+    //initialize the shell home directory
     init_shell_home();
     init_history();
     init_signal_handlers();
@@ -78,7 +79,7 @@ int main() {
     char input[MAX_INPUT];
 
     while (true) {
-        display_prompt();
+        displayprompt();
 
         if (!read_line_with_autocomplete(input, sizeof(input))) {
             std::cout << "\n";

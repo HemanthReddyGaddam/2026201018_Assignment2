@@ -13,17 +13,20 @@
 char SHELL_HOME[PATH_MAX];
 
 void init_shell_home() {
+    //get the current working directory and store it in SHELL_HOME
     if (getcwd(SHELL_HOME, sizeof(SHELL_HOME)) == nullptr) {
         SHELL_HOME[0] = '\0';
     }
 }
 
-void display_prompt() {
-    // Dynamically retrieve username
+void displayprompt() {
+    // Dynamically get the username
+    // geteuid() system call gets the active user's ID; getpwuid() function converts that ID to a user record.
     struct passwd* pw = getpwuid(geteuid());
     const char* username = pw ? pw->pw_name : "user";
 
-    // Dynamically retrieve hostname
+    // Dynamically get the hostname
+    // gethostname() system call gets the hostname of the system and stores it in the hostname variable
     char hostname[HOST_NAME_MAX];
     if (gethostname(hostname, sizeof(hostname)) != 0) {
         strncpy(hostname, "system", sizeof(hostname));
@@ -35,17 +38,14 @@ void display_prompt() {
         strncpy(cwd, "?", sizeof(cwd));
     }
 
+    // Display the username, hostname, and the current working directory
     std::cout << "<" << username << "@" << hostname << ":";
 
-    // Calculate relative path to SHELL_HOME
+    // Checkinf  if the current dir is inside or matches our static home dir.
     size_t home_len = strlen(SHELL_HOME);
     if (home_len > 0 && strncmp(cwd, SHELL_HOME, home_len) == 0) {
         // Replace base shell directory with ~
-        if (cwd[home_len] == '\0' || cwd[home_len] == '/') {
-            std::cout << "~" << (cwd + home_len);
-        } else {
-            std::cout << cwd;
-        }
+        std::cout << "~" << (cwd + home_len);
     } else {
         std::cout << cwd;
     }

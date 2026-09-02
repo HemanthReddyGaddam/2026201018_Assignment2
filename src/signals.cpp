@@ -162,7 +162,7 @@ static void sigchld_handler(int sig) {
                 jobs[j] = jobs[j + 1];
             }
             job_count--;
-            display_prompt();
+            displayprompt();
             std::cout.flush();
         } else {
             ++i;
