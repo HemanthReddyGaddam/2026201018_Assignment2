@@ -1,0 +1,10 @@
+# Compiled binary
+shell
+build/
+
+# Shell runtime files
+.shell_history
+
+# Test / temporary files
+*.txt
+!README.md
