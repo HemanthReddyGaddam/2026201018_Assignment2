@@ -1,10 +1,13 @@
+// echo builtin - print arguments
+
 #include "builtin_echo.h"
 #include <iostream>
 
-void execute_echo(char** args, int arg_count) {
-    for (int i = 1; i < arg_count; ++i) {
+void executeecho(char** args, int argc) {
+    // print each arg with a space between them
+    for (int i = 1; i < argc; i++) {
         std::cout << args[i];
-        if (i < arg_count - 1) {
+        if (i < argc - 1) {
             std::cout << " ";
         }
     }

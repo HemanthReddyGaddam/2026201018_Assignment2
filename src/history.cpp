@@ -1,3 +1,5 @@
+// command history - stores last 20 cmds in .shell_history file
+
 #include "history.h"
 #include "prompt.h"
 #include <iostream>
@@ -5,141 +7,149 @@
 #include <cstdio>
 #include <cstdlib>
 
-#define MAX_HISTORY_STORED 20
-#define MAX_HISTORY_DISPLAY 10
-#define MAX_CMD_LEN 1024
-#define HISTORY_FILE ".shell_history"
+#define max_stored 20   // max commands to remember
+#define max_show 10     // default number history prints
+#define max_cmd 1024
+#define histfile ".shell_history"
 
-static char history[MAX_HISTORY_STORED][MAX_CMD_LEN];
-static int history_count = 0;
+static char histbuf[max_stored][max_cmd];
+static int histcount = 0;
+static char histfilepath[PATH_MAX];
 
-static char history_file_path[PATH_MAX];
-
-static void build_history_path() {
-    snprintf(history_file_path, sizeof(history_file_path), "%s/%s", SHELL_HOME, HISTORY_FILE);
+// path to history file inside shell home
+static void buildhistorypath() {
+    snprintf(histfilepath, sizeof(histfilepath), "%s/%s", shell_home, histfile);
 }
 
-static void persist_history() {
-    FILE* fp = fopen(history_file_path, "w");
+// write all commands to file
+static void savehistory() {
+    FILE* fp = fopen(histfilepath, "w");
     if (fp == nullptr) {
         return;
     }
-    for (int i = 0; i < history_count; i++) {
-        fprintf(fp, "%s\n", history[i]);
+    for (int i = 0; i < histcount; i++) {
+        fprintf(fp, "%s\n", histbuf[i]);
     }
     fclose(fp);
 }
 
-void init_history() {
-    build_history_path();
-    history_count = 0;
+// load history from file when shell starts
+void inithistory() {
+    buildhistorypath();
+    histcount = 0;
 
-    FILE* fp = fopen(history_file_path, "r");
+    FILE* fp = fopen(histfilepath, "r");
     if (fp == nullptr) {
-        return;
+        return;  // no history file yet, that's fine
     }
 
-    char line[MAX_CMD_LEN];
-    char loaded[MAX_HISTORY_STORED][MAX_CMD_LEN];
-    int loaded_count = 0;
+    char line[max_cmd];
+    char loaded[max_stored][max_cmd];
+    int loadedcount = 0;
 
     while (fgets(line, sizeof(line), fp) != nullptr) {
-        size_t len = strlen(line);
+        int len = strlen(line);
         if (len > 0 && line[len - 1] == '\n') {
             line[len - 1] = '\0';
         }
         if (line[0] == '\0') {
             continue;
         }
-        if (loaded_count < MAX_HISTORY_STORED) {
-            strncpy(loaded[loaded_count], line, MAX_CMD_LEN - 1);
-            loaded[loaded_count][MAX_CMD_LEN - 1] = '\0';
-            loaded_count++;
+
+        if (loadedcount < max_stored) {
+            strncpy(loaded[loadedcount], line, max_cmd - 1);
+            loaded[loadedcount][max_cmd - 1] = '\0';
+            loadedcount++;
         } else {
-            for (int i = 0; i < MAX_HISTORY_STORED - 1; i++) {
+            // drop oldest entry when full
+            for (int i = 0; i < max_stored - 1; i++) {
                 strcpy(loaded[i], loaded[i + 1]);
             }
-            strncpy(loaded[MAX_HISTORY_STORED - 1], line, MAX_CMD_LEN - 1);
-            loaded[MAX_HISTORY_STORED - 1][MAX_CMD_LEN - 1] = '\0';
+            strncpy(loaded[max_stored - 1], line, max_cmd - 1);
+            loaded[max_stored - 1][max_cmd - 1] = '\0';
         }
     }
     fclose(fp);
 
-    for (int i = 0; i < loaded_count; i++) {
-        strcpy(history[i], loaded[i]);
+    for (int i = 0; i < loadedcount; i++) {
+        strcpy(histbuf[i], loaded[i]);
     }
-    history_count = loaded_count;
+    histcount = loadedcount;
 }
 
-void add_history_command(const char* cmd) {
+// add a new command to history
+void addhistorycmd(const char* cmd) {
     if (cmd == nullptr) {
         return;
     }
 
-    char trimmed[MAX_CMD_LEN];
-    strncpy(trimmed, cmd, MAX_CMD_LEN - 1);
-    trimmed[MAX_CMD_LEN - 1] = '\0';
+    // trim spaces from ends
+    char trimmed[max_cmd];
+    strncpy(trimmed, cmd, max_cmd - 1);
+    trimmed[max_cmd - 1] = '\0';
 
-    size_t len = strlen(trimmed);
+    int len = strlen(trimmed);
     while (len > 0 && (trimmed[len - 1] == ' ' || trimmed[len - 1] == '\t')) {
         trimmed[len - 1] = '\0';
         len--;
     }
 
-    size_t start = 0;
+    int start = 0;
     while (trimmed[start] == ' ' || trimmed[start] == '\t') {
         start++;
     }
     if (trimmed[start] == '\0') {
-        return;
+        return;  // empty line, skip
     }
 
     if (start > 0) {
-        strncpy(trimmed, trimmed + start, MAX_CMD_LEN - start);
-        trimmed[MAX_CMD_LEN - 1] = '\0';
+        strncpy(trimmed, trimmed + start, max_cmd - start);
+        trimmed[max_cmd - 1] = '\0';
     }
 
-    if (history_count < MAX_HISTORY_STORED) {
-        strncpy(history[history_count], trimmed, MAX_CMD_LEN - 1);
-        history[history_count][MAX_CMD_LEN - 1] = '\0';
-        history_count++;
+    if (histcount < max_stored) {
+        strncpy(histbuf[histcount], trimmed, max_cmd - 1);
+        histbuf[histcount][max_cmd - 1] = '\0';
+        histcount++;
     } else {
-        for (int i = 0; i < MAX_HISTORY_STORED - 1; i++) {
-            strcpy(history[i], history[i + 1]);
+        // shift old ones out
+        for (int i = 0; i < max_stored - 1; i++) {
+            strcpy(histbuf[i], histbuf[i + 1]);
         }
-        strncpy(history[MAX_HISTORY_STORED - 1], trimmed, MAX_CMD_LEN - 1);
-        history[MAX_HISTORY_STORED - 1][MAX_CMD_LEN - 1] = '\0';
+        strncpy(histbuf[max_stored - 1], trimmed, max_cmd - 1);
+        histbuf[max_stored - 1][max_cmd - 1] = '\0';
     }
 
-    persist_history();
+    savehistory();
 }
 
-void execute_history(char** args, int arg_count) {
-    int display_count = MAX_HISTORY_DISPLAY;
-    if (arg_count >= 2) {
-        display_count = atoi(args[1]);
-        if (display_count < 0) {
-            display_count = 0;
+// history command - print recent commands
+void executehistory(char** args, int argc) {
+    int showcount = max_show;
+    if (argc >= 2) {
+        showcount = atoi(args[1]);
+        if (showcount < 0) {
+            showcount = 0;
         }
     }
 
-    int start = history_count - display_count;
+    int start = histcount - showcount;
     if (start < 0) {
         start = 0;
     }
 
-    for (int i = start; i < history_count; i++) {
-        std::cout << history[i] << "\n";
+    for (int i = start; i < histcount; i++) {
+        std::cout << histbuf[i] << "\n";
     }
 }
 
-int get_history_count() {
-    return history_count;
+int gethistorycount() {
+    return histcount;
 }
 
-const char* get_history_entry(int index) {
-    if (index < 0 || index >= history_count) {
+const char* gethistoryentry(int index) {
+    if (index < 0 || index >= histcount) {
         return "";
     }
-    return history[index];
+    return histbuf[index];
 }

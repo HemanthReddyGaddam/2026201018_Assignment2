@@ -5,22 +5,20 @@
 
 extern volatile pid_t fg_pid;
 
-struct BackgroundJob {
-    int job_id;
+struct bgjob {
+    int jobid;
     pid_t pid;
     char command[256];
-    bool is_running;
+    bool running;
 };
 
-void init_signal_handlers();
-
-// Background job tracking & process management
-void add_job(pid_t pid, const char* cmd);
-void remove_job(pid_t pid);
-void update_job_status(pid_t pid, bool is_running);
-void execute_activities();
-void execute_ping(char** args, int arg_count);
-void execute_fg(char** args, int arg_count);
-void execute_bg(char** args, int arg_count);
+void initsignalhandlers();
+void addjob(pid_t pid, const char* cmd);
+void removejob(pid_t pid);
+void updatejobstatus(pid_t pid, bool running);
+void executeactivities();
+void executeping(char** args, int argc);
+void executefg(char** args, int argc);
+void executebg(char** args, int argc);
 
 #endif

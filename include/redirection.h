@@ -1,7 +1,7 @@
 #ifndef REDIRECTION_H
 #define REDIRECTION_H
 
-bool handle_redirection(char** args, int& arg_count, int& saved_stdin, int& saved_stdout);
-void restore_redirection(int saved_stdin, int saved_stdout);
+bool handleredirection(char** args, int& argc, int& savedin, int& savedout);
+void restoreredirection(int savedin, int savedout);
 
 #endif

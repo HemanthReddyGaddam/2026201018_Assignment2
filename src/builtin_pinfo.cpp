@@ -1,3 +1,5 @@
+// pinfo builtin - show process info from /proc
+
 #include "builtin_pinfo.h"
 #include "prompt.h"
 #include <iostream>
@@ -13,64 +15,69 @@
 #include <sys/proc_info.h>
 #endif
 
-static void print_executable_path(const char* exe_path) {
-    size_t home_len = strlen(SHELL_HOME);
-    if (home_len > 0 && strncmp(exe_path, SHELL_HOME, home_len) == 0 &&
-        (exe_path[home_len] == '\0' || exe_path[home_len] == '/')) {
-        std::cout << "Executable Path -- ~" << (exe_path + home_len) << "\n";
+// print exe path, use ~ if inside shell home
+static void printexepath(const char* exepath) {
+    size_t homelen = strlen(shell_home);
+    if (homelen > 0 && strncmp(exepath, shell_home, homelen) == 0 &&
+        (exepath[homelen] == '\0' || exepath[homelen] == '/')) {
+        std::cout << "Executable Path -- ~" << (exepath + homelen) << "\n";
     } else {
-        std::cout << "Executable Path -- " << exe_path << "\n";
+        std::cout << "Executable Path -- " << exepath << "\n";
     }
 }
 
-void execute_pinfo(char** args, int arg_count) {
+void executepinfo(char** args, int argc) {
+    // default to shell's own pid
     pid_t pid = getpid();
-    if (arg_count > 1) {
+    if (argc > 1) {
         pid = atoi(args[1]);
     }
 
 #ifdef __linux__
-    char stat_path[64];
-    snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
+    // read /proc/<pid>/stat on linux
+    char statpath[64];
+    snprintf(statpath, sizeof(statpath), "/proc/%d/stat", pid);
 
-    FILE* stat_file = fopen(stat_path, "r");
-    if (stat_file == nullptr) {
+    FILE* fp = fopen(statpath, "r");
+    if (fp == nullptr) {
         perror("pinfo error");
         return;
     }
 
     char line[4096];
-    if (fgets(line, sizeof(line), stat_file) == nullptr) {
+    if (fgets(line, sizeof(line), fp) == nullptr) {
         perror("pinfo error");
-        fclose(stat_file);
+        fclose(fp);
         return;
     }
-    fclose(stat_file);
+    fclose(fp);
 
-    char* rparen = strrchr(line, ')');
-    if (rparen == nullptr) {
+    // process name in stat file is inside (parens), so find the closing )
+    char* endname = strrchr(line, ')');
+    if (endname == nullptr) {
         std::cout << "pinfo error: could not parse process state\n";
         return;
     }
 
-    char* fields_start = rparen + 2;
-    while (*fields_start == ' ') {
-        fields_start++;
+    // fields start after ") "
+    char* field = endname + 2;
+    while (*field == ' ') {
+        field++;
     }
 
-    char state = fields_start[0];
+    char state = field[0];
     pid_t pgrp = 0;
     pid_t tpgid = 0;
     unsigned long vsize = 0;
 
-    char* field = fields_start;
-    int field_num = 3;
-    while (*field != '\0' && field_num <= 23) {
-        if (field_num == 5) {
+    // walk through stat fields to get what we need
+    int fieldnum = 3;
+    while (*field != '\0' && fieldnum <= 23) {
+        if (fieldnum == 5) {
             pgrp = atoi(field);
-        } else if (field_num == 8) {
+        } else if (fieldnum == 8) {
             tpgid = atoi(field);
-        } else if (field_num == 23) {
+        } else if (fieldnum == 23) {
             vsize = strtoul(field, nullptr, 10);
         }
 
@@ -80,12 +87,13 @@ void execute_pinfo(char** args, int arg_count) {
         while (*field == ' ') {
             field++;
         }
-        field_num++;
+        fieldnum++;
     }
 
     char status[8];
     status[0] = state;
     status[1] = '\0';
+    // add + if process is in foreground
     if (pgrp == tpgid && tpgid != -1) {
         status[1] = '+';
         status[2] = '\0';
@@ -94,19 +102,21 @@ void execute_pinfo(char** args, int arg_count) {
     std::cout << "Process Status -- {" << status << "}\n";
     std::cout << "memory -- " << vsize << " {Virtual Memory}\n";
 
-    char exe_link[64];
-    snprintf(exe_link, sizeof(exe_link), "/proc/%d/exe", pid);
-    char exe_path[PATH_MAX];
-    ssize_t len = readlink(exe_link, exe_path, sizeof(exe_path) - 1);
+    // get executable path from /proc/<pid>/exe symlink
+    char exelink[64];
+    snprintf(exelink, sizeof(exelink), "/proc/%d/exe", pid);
+    char exepath[PATH_MAX];
+    ssize_t len = readlink(exelink, exepath, sizeof(exepath) - 1);
 
     if (len != -1) {
-        exe_path[len] = '\0';
-        print_executable_path(exe_path);
+        exepath[len] = '\0';
+        printexepath(exepath);
     } else {
         std::cout << "Executable Path -- Permission Denied / Not Found\n";
     }
 
 #elif defined(__APPLE__)
+    // macos uses different api for process info
     struct proc_bsdinfo proc;
     int st = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &proc, sizeof(proc));
     if (st <= 0) {
@@ -138,10 +148,10 @@ void execute_pinfo(char** args, int arg_count) {
     std::cout << "Process Status -- {" << status << "}\n";
     std::cout << "memory -- " << vsize << " {Virtual Memory}\n";
 
-    char exe_path[PATH_MAX];
-    int ret = proc_pidpath(pid, exe_path, sizeof(exe_path));
+    char exepath[PATH_MAX];
+    int ret = proc_pidpath(pid, exepath, sizeof(exepath));
     if (ret > 0) {
-        print_executable_path(exe_path);
+        printexepath(exepath);
     } else {
         std::cout << "Executable Path -- Permission Denied / Not Found\n";
     }

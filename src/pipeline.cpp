@@ -1,3 +1,5 @@
+// pipe commands together with |
+
 #include "pipeline.h"
 #include "redirection.h"
 #include "executor.h"
@@ -15,113 +17,115 @@
 #include <cstring>
 #include <cstdlib>
 
-void execute_pipeline(char* command_str) {
-    char* commands[64];
-    int cmd_count = 0;
+#define max_cmds 64
+#define max_pipes 63
 
-    char* saveptr_pipe = nullptr;
-    char* token = strtok_r(command_str, "|", &saveptr_pipe);
-    while (token != nullptr && cmd_count < 64) {
-        commands[cmd_count++] = token;
-        token = strtok_r(nullptr, "|", &saveptr_pipe);
+void executepipeline(char* cmdline) {
+    char* cmds[max_cmds];
+    int cmdcount = 0;
+
+    // split the line by |
+    char* saveptr = nullptr;
+    char* part = strtok_r(cmdline, "|", &saveptr);
+    while (part != nullptr && cmdcount < max_cmds) {
+        cmds[cmdcount++] = part;
+        part = strtok_r(nullptr, "|", &saveptr);
     }
 
-    if (cmd_count == 0) {
+    if (cmdcount == 0) {
         return;
     }
 
-    int num_pipes = cmd_count - 1;
-    int* pipefds = nullptr;
+    int pipecount = cmdcount - 1;
+    int pipefds[2 * max_pipes];
+    pid_t childpids[max_cmds];
+    pid_t pgid = 0;
 
-    if (num_pipes > 0) {
-        pipefds = new int[2 * num_pipes];
-        for (int i = 0; i < num_pipes; ++i) {
-            if (pipe(pipefds + i * 2) < 0) {
-                perror("pipe error");
-                delete[] pipefds;
-                return;
-            }
+    // create all pipes first
+    for (int i = 0; i < pipecount; i++) {
+        if (pipe(pipefds + i * 2) < 0) {
+            perror("pipe error");
+            return;
         }
     }
 
-    pid_t* child_pids = new pid_t[cmd_count];
-    pid_t pgid = 0;
-
-    for (int i = 0; i < cmd_count; ++i) {
+    // fork a child for each command in the pipe
+    for (int i = 0; i < cmdcount; i++) {
         char* args[128];
-        int arg_count = 0;
+        int argc = 0;
 
-        char* saveptr_arg = nullptr;
-        char* arg_token = strtok_r(commands[i], " \t\n", &saveptr_arg);
-        while (arg_token != nullptr && arg_count < 127) {
-            strip_outer_quotes(arg_token);
-            args[arg_count++] = arg_token;
-            arg_token = strtok_r(nullptr, " \t\n", &saveptr_arg);
+        char* argptr = nullptr;
+        char* token = strtok_r(cmds[i], " \t\n", &argptr);
+        while (token != nullptr && argc < 127) {
+            stripquotes(token);
+            args[argc++] = token;
+            token = strtok_r(nullptr, " \t\n", &argptr);
         }
-        args[arg_count] = nullptr;
+        args[argc] = nullptr;
 
-        if (arg_count == 0) {
-            child_pids[i] = -1;
+        if (argc == 0) {
+            childpids[i] = -1;
             continue;
         }
 
         pid_t pid = fork();
         if (pid < 0) {
             perror("fork error");
-            delete[] pipefds;
-            delete[] child_pids;
             return;
         }
 
         if (pid == 0) {
+            // child setup
             if (i == 0) {
                 setpgid(0, 0);
             } else {
                 setpgid(0, pgid);
             }
 
+            // connect stdin to previous pipe (if not first cmd)
             if (i != 0) {
                 dup2(pipefds[(i - 1) * 2], STDIN_FILENO);
             }
-
-            if (i != cmd_count - 1) {
+            // connect stdout to next pipe (if not last cmd)
+            if (i != cmdcount - 1) {
                 dup2(pipefds[i * 2 + 1], STDOUT_FILENO);
             }
 
-            if (num_pipes > 0) {
-                for (int j = 0; j < 2 * num_pipes; ++j) {
-                    close(pipefds[j]);
-                }
+            // close all pipe fds in child
+            for (int j = 0; j < 2 * pipecount; j++) {
+                close(pipefds[j]);
             }
 
-            int saved_in = -1, saved_out = -1;
-            if (!handle_redirection(args, arg_count, saved_in, saved_out)) {
+            // handle < > >> inside pipeline too
+            int savedin = -1, savedout = -1;
+            if (!handleredirection(args, argc, savedin, savedout)) {
                 _exit(EXIT_FAILURE);
             }
 
+            // run builtin or external command
             if (strcmp(args[0], "pwd") == 0) {
-                execute_pwd();
+                executepwd();
             } else if (strcmp(args[0], "echo") == 0) {
-                execute_echo(args, arg_count);
+                executeecho(args, argc);
             } else if (strcmp(args[0], "cd") == 0) {
-                execute_cd(args, arg_count);
+                executecd(args, argc);
             } else if (strcmp(args[0], "ls") == 0) {
-                execute_ls(args, arg_count);
+                executels(args, argc);
             } else if (strcmp(args[0], "pinfo") == 0) {
-                execute_pinfo(args, arg_count);
+                executepinfo(args, argc);
             } else if (strcmp(args[0], "search") == 0) {
-                execute_search(args, arg_count);
+                executesearch(args, argc);
             } else if (execvp(args[0], args) < 0) {
                 std::cout << "ERROR: '" << args[0] << "' is not a valid command\n";
                 _exit(EXIT_FAILURE);
             }
 
-            restore_redirection(saved_in, saved_out);
-            fflush(stdout);
+            restoreredirection(savedin, savedout);
+            fflush(stdout);  // needed so piped output actually goes through
             _exit(EXIT_SUCCESS);
         }
 
-        child_pids[i] = pid;
+        childpids[i] = pid;
         if (i == 0) {
             pgid = pid;
         } else {
@@ -129,27 +133,22 @@ void execute_pipeline(char* command_str) {
         }
     }
 
-    if (num_pipes > 0) {
-        for (int i = 0; i < 2 * num_pipes; ++i) {
-            close(pipefds[i]);
-        }
+    // parent closes its copy of pipe fds
+    for (int i = 0; i < 2 * pipecount; i++) {
+        close(pipefds[i]);
     }
 
+    // wait for all children
     fg_pid = pgid;
-
-    for (int i = 0; i < cmd_count; ++i) {
-        if (child_pids[i] > 0) {
+    for (int i = 0; i < cmdcount; i++) {
+        if (childpids[i] > 0) {
             int status;
-            waitpid(child_pids[i], &status, WUNTRACED);
+            waitpid(childpids[i], &status, WUNTRACED);
             if (WIFSTOPPED(status)) {
-                add_job(child_pids[i], commands[i]);
-                update_job_status(child_pids[i], false);
+                addjob(childpids[i], cmds[i]);
+                updatejobstatus(childpids[i], false);
             }
         }
     }
-
     fg_pid = 0;
-
-    delete[] pipefds;
-    delete[] child_pids;
 }

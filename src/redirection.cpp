@@ -1,95 +1,100 @@
+// input/output redirection - < > >>
+
 #include "redirection.h"
 #include <iostream>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
 
-bool handle_redirection(char** args, int& arg_count, int& saved_stdin, int& saved_stdout) {
-    saved_stdin = -1;
-    saved_stdout = -1;
+bool handleredirection(char** args, int& argc, int& savedin, int& savedout) {
+    savedin = -1;
+    savedout = -1;
 
-    char* input_file = nullptr;
-    char* output_file = nullptr;
-    bool append_mode = false;
+    char* infile = nullptr;
+    char* outfile = nullptr;
+    bool append = false;
 
-    int new_arg_count = 0;
-    char* clean_args[128];
+    int newargc = 0;
+    char* newargs[128];
 
-    for (int i = 0; i < arg_count; ++i) {
+    // go through args and pull out < > >> operators
+    for (int i = 0; i < argc; i++) {
         if (strcmp(args[i], "<") == 0) {
-            if (i + 1 < arg_count) {
-                input_file = args[++i];
+            if (i + 1 < argc) {
+                infile = args[++i];
             } else {
                 std::cout << "Syntax error near unexpected token '<'\n";
                 return false;
             }
         } else if (strcmp(args[i], ">") == 0) {
-            if (i + 1 < arg_count) {
-                output_file = args[++i];
-                append_mode = false;
+            if (i + 1 < argc) {
+                outfile = args[++i];
+                append = false;
             } else {
                 std::cout << "Syntax error near unexpected token '>'\n";
                 return false;
             }
         } else if (strcmp(args[i], ">>") == 0) {
-            if (i + 1 < arg_count) {
-                output_file = args[++i];
-                append_mode = true;
+            if (i + 1 < argc) {
+                outfile = args[++i];
+                append = true;
             } else {
                 std::cout << "Syntax error near unexpected token '>>'\n";
                 return false;
             }
         } else {
-            clean_args[new_arg_count++] = args[i];
+            newargs[newargc++] = args[i];
         }
     }
 
-    clean_args[new_arg_count] = nullptr;
+    newargs[newargc] = nullptr;
 
-    // Handle input redirection (<)
-    if (input_file != nullptr) {
-        int fd_in = open(input_file, O_RDONLY);
-        if (fd_in < 0) {
+    // redirect stdin from file
+    if (infile != nullptr) {
+        int fd = open(infile, O_RDONLY);
+        if (fd < 0) {
             perror("Input file error");
             return false;
         }
-        saved_stdin = dup(STDIN_FILENO);
-        dup2(fd_in, STDIN_FILENO);
-        close(fd_in);
+        savedin = dup(STDIN_FILENO);
+        dup2(fd, STDIN_FILENO);
+        close(fd);
     }
 
-    // Handle output redirection (> or >>)
-    if (output_file != nullptr) {
-        int flags = O_WRONLY | O_CREAT | (append_mode ? O_APPEND : O_TRUNC);
-        // Create with permissions 0644 (rw-r--r--)
-        int fd_out = open(output_file, flags, 0644);
-        if (fd_out < 0) {
+    // redirect stdout to file
+    if (outfile != nullptr) {
+        int flags = O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC);
+        int fd = open(outfile, flags, 0644);
+        if (fd < 0) {
             perror("Output file error");
-            if (saved_stdin != -1) restore_redirection(saved_stdin, -1);
+            if (savedin != -1) {
+                restoreredirection(savedin, -1);
+            }
             return false;
         }
-        saved_stdout = dup(STDOUT_FILENO);
-        dup2(fd_out, STDOUT_FILENO);
-        close(fd_out);
+        savedout = dup(STDOUT_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        close(fd);
     }
 
-    // Update original args to strip redirection operator components
-    for (int i = 0; i < new_arg_count; ++i) {
-        args[i] = clean_args[i];
+    // put cleaned args back (without < > >> parts)
+    for (int i = 0; i < newargc; i++) {
+        args[i] = newargs[i];
     }
-    args[new_arg_count] = nullptr;
-    arg_count = new_arg_count;
+    args[newargc] = nullptr;
+    argc = newargc;
 
     return true;
 }
 
-void restore_redirection(int saved_stdin, int saved_stdout) {
-    if (saved_stdin != -1) {
-        dup2(saved_stdin, STDIN_FILENO);
-        close(saved_stdin);
+// put stdin/stdout back to normal after command runs
+void restoreredirection(int savedin, int savedout) {
+    if (savedin != -1) {
+        dup2(savedin, STDIN_FILENO);
+        close(savedin);
     }
-    if (saved_stdout != -1) {
-        dup2(saved_stdout, STDOUT_FILENO);
-        close(saved_stdout);
+    if (savedout != -1) {
+        dup2(savedout, STDOUT_FILENO);
+        close(savedout);
     }
 }

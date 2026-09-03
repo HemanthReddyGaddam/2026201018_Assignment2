@@ -1,3 +1,5 @@
+// shell prompt - shows <user@host:path>
+
 #include "prompt.h"
 #include <iostream>
 #include <unistd.h>
@@ -5,47 +7,44 @@
 #include <cstring>
 #include <climits>
 
-#ifndef HOST_NAME_MAX
-#define HOST_NAME_MAX 256
+#ifndef host_name_max
+#define host_name_max 256
 #endif
 
-// Define the global variable here
-char SHELL_HOME[PATH_MAX];
+// starting directory of the shell (shown as ~)
+char shell_home[PATH_MAX];
 
-void init_shell_home() {
-    //get the current working directory and store it in SHELL_HOME
-    if (getcwd(SHELL_HOME, sizeof(SHELL_HOME)) == nullptr) {
-        SHELL_HOME[0] = '\0';
+// save the directory where shell was started
+void initshellhome() {
+    if (getcwd(shell_home, sizeof(shell_home)) == nullptr) {
+        shell_home[0] = '\0';
     }
 }
 
 void displayprompt() {
-    // Dynamically get the username
-    // geteuid() system call gets the active user's ID; getpwuid() function converts that ID to a user record.
+    // get username from uid
     struct passwd* pw = getpwuid(geteuid());
     const char* username = pw ? pw->pw_name : "user";
 
-    // Dynamically get the hostname
-    // gethostname() system call gets the hostname of the system and stores it in the hostname variable
-    char hostname[HOST_NAME_MAX];
+    // get system hostname
+    char hostname[host_name_max];
     if (gethostname(hostname, sizeof(hostname)) != 0) {
         strncpy(hostname, "system", sizeof(hostname));
     }
 
-    // Retrieve current working directory
+    // get current working directory
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) == nullptr) {
         strncpy(cwd, "?", sizeof(cwd));
     }
 
-    // Display the username, hostname, and the current working directory
     std::cout << "<" << username << "@" << hostname << ":";
 
-    // Checkinf  if the current dir is inside or matches our static home dir.
-    size_t home_len = strlen(SHELL_HOME);
-    if (home_len > 0 && strncmp(cwd, SHELL_HOME, home_len) == 0) {
-        // Replace base shell directory with ~
-        std::cout << "~" << (cwd + home_len);
+    // if inside shell home, replace path with ~
+    size_t homelen = strlen(shell_home);
+    if (homelen > 0 && strncmp(cwd, shell_home, homelen) == 0 &&
+        (cwd[homelen] == '\0' || cwd[homelen] == '/')) {
+        std::cout << "~" << (cwd + homelen);
     } else {
         std::cout << cwd;
     }

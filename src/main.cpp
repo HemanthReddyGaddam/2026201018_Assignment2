@@ -1,3 +1,5 @@
+// main shell loop - reads input and runs commands
+
 #include "prompt.h"
 #include "builtin_cd.h"
 #include "builtin_echo.h"
@@ -16,80 +18,106 @@
 #include <cstring>
 #include <unistd.h>
 
-#define MAX_INPUT 1024
+#define max_input 1024
 
-void process_command_line(char* line) {
-    char* saveptr_cmd;
-    char* command = strtok_r(line, ";", &saveptr_cmd);
+// check command name and call the right builtin or external program
+static void runbuiltin(char** args, int argc, bool bg) {
+    if (strcmp(args[0], "pwd") == 0) {
+        executepwd();
+    } else if (strcmp(args[0], "echo") == 0) {
+        executeecho(args, argc);
+    } else if (strcmp(args[0], "cd") == 0) {
+        executecd(args, argc);
+    } else if (strcmp(args[0], "ls") == 0) {
+        executels(args, argc);
+    } else if (strcmp(args[0], "pinfo") == 0) {
+        executepinfo(args, argc);
+    } else if (strcmp(args[0], "search") == 0) {
+        executesearch(args, argc);
+    } else if (strcmp(args[0], "history") == 0) {
+        executehistory(args, argc);
+    } else if (strcmp(args[0], "activities") == 0) {
+        executeactivities();
+    } else if (strcmp(args[0], "ping") == 0) {
+        executeping(args, argc);
+    } else if (strcmp(args[0], "fg") == 0) {
+        executefg(args, argc);
+    } else if (strcmp(args[0], "bg") == 0) {
+        executebg(args, argc);
+    } else if (strcmp(args[0], "exit") == 0) {
+        _exit(0);
+    } else {
+        // not a builtin, so fork and exec
+        executesystemcmd(args, argc, bg);
+    }
+}
 
-    while (command != nullptr) {
-        if (strchr(command, '|') != nullptr) {
-            execute_pipeline(command);
+// handle one full input line (can have multiple commands separated by ;)
+void processcommandline(char* line) {
+    char* saveptr = nullptr;
+    // split by semicolon first
+    char* cmd = strtok_r(line, ";", &saveptr);
+
+    while (cmd != nullptr) {
+        // pipe commands go to pipeline handler
+        if (strchr(cmd, '|') != nullptr) {
+            executepipeline(cmd);
         } else {
             char* args[128];
-            int arg_count = 0;
+            int argc = 0;
 
-            char* saveptr_arg;
-            char* token = strtok_r(command, " \t\n", &saveptr_arg);
-            while (token != nullptr && arg_count < 127) {
-                strip_outer_quotes(token);
-                args[arg_count++] = token;
-                token = strtok_r(nullptr, " \t\n", &saveptr_arg);
+            // tokenize on spaces and tabs
+            char* argptr = nullptr;
+            char* token = strtok_r(cmd, " \t\n", &argptr);
+            while (token != nullptr && argc < 127) {
+                stripquotes(token);  // remove "quotes" from args
+                args[argc++] = token;
+                token = strtok_r(nullptr, " \t\n", &argptr);
             }
-            args[arg_count] = nullptr;
+            args[argc] = nullptr;
 
-            if (arg_count > 0) {
-                bool is_background = false;
-                if (strcmp(args[arg_count - 1], "&") == 0) {
-                    is_background = true;
-                    args[arg_count - 1] = nullptr;
-                    arg_count--;
+            if (argc > 0) {
+                bool bg = false;
+                // check for background & at the end
+                if (strcmp(args[argc - 1], "&") == 0) {
+                    bg = true;
+                    args[argc - 1] = nullptr;
+                    argc--;
                 }
 
-                if (arg_count > 0) {
-                    int saved_stdin = -1, saved_stdout = -1;
-                    if (handle_redirection(args, arg_count, saved_stdin, saved_stdout)) {
-                        if (strcmp(args[0], "pwd") == 0) execute_pwd();
-                        else if (strcmp(args[0], "echo") == 0) execute_echo(args, arg_count);
-                        else if (strcmp(args[0], "cd") == 0) execute_cd(args, arg_count);
-                        else if (strcmp(args[0], "ls") == 0) execute_ls(args, arg_count);
-                        else if (strcmp(args[0], "pinfo") == 0) execute_pinfo(args, arg_count);
-                        else if (strcmp(args[0], "search") == 0) execute_search(args, arg_count);
-                        else if (strcmp(args[0], "history") == 0) execute_history(args, arg_count);
-                        else if (strcmp(args[0], "activities") == 0) execute_activities();
-                        else if (strcmp(args[0], "ping") == 0) execute_ping(args, arg_count);
-                        else if (strcmp(args[0], "fg") == 0) execute_fg(args, arg_count);
-                        else if (strcmp(args[0], "bg") == 0) execute_bg(args, arg_count);
-                        else if (strcmp(args[0], "exit") == 0) _exit(0);
-                        else execute_system_command(args, arg_count, is_background);
-
-                        restore_redirection(saved_stdin, saved_stdout);
+                if (argc > 0) {
+                    int savedin = -1, savedout = -1;
+                    // set up < > >> if present, then run command
+                    if (handleredirection(args, argc, savedin, savedout)) {
+                        runbuiltin(args, argc, bg);
+                        restoreredirection(savedin, savedout);
                     }
                 }
             }
         }
-        command = strtok_r(nullptr, ";", &saveptr_cmd);
+        cmd = strtok_r(nullptr, ";", &saveptr);
     }
 }
 
 int main() {
-    //initialize the shell home directory
-    init_shell_home();
-    init_history();
-    init_signal_handlers();
+    // setup stuff before shell starts
+    initshellhome();       // save starting directory as ~
+    inithistory();         // load old commands from file
+    initsignalhandlers();  // ctrl-c, ctrl-z, etc.
 
-    char input[MAX_INPUT];
+    char input[max_input];
 
     while (true) {
         displayprompt();
 
-        if (!read_line_with_autocomplete(input, sizeof(input))) {
+        // readinput returns false on ctrl-d (logout)
+        if (!readinput(input, sizeof(input))) {
             std::cout << "\n";
             break;
         }
 
-        add_history_command(input);
-        process_command_line(input);
+        addhistorycmd(input);
+        processcommandline(input);
     }
 
     return 0;

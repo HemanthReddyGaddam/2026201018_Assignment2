@@ -1,3 +1,5 @@
+// signal handling - ctrl-c, ctrl-z, background jobs
+
 #include "signals.h"
 #include "prompt.h"
 #include <iostream>
@@ -7,73 +9,76 @@
 #include <unistd.h>
 #include <cstdlib>
 
+// pid of whatever is running in foreground right now
 volatile pid_t fg_pid = 0;
 
-#define MAX_JOBS 256
+#define max_jobs 256
 
-static BackgroundJob jobs[MAX_JOBS];
-static int job_count = 0;
-static int next_job_id = 1;
+static bgjob jobs[max_jobs];
+static int jobcount = 0;
+static int nextjobid = 1;
 
-void add_job(pid_t pid, const char* cmd) {
-    if (job_count >= MAX_JOBS) {
+void addjob(pid_t pid, const char* cmd) {
+    if (jobcount >= max_jobs) {
         return;
     }
 
-    BackgroundJob& job = jobs[job_count++];
-    job.job_id = next_job_id++;
-    job.pid = pid;
-    strncpy(job.command, cmd, sizeof(job.command) - 1);
-    job.command[sizeof(job.command) - 1] = '\0';
-    job.is_running = true;
+    jobs[jobcount].jobid = nextjobid++;
+    jobs[jobcount].pid = pid;
+    strncpy(jobs[jobcount].command, cmd, sizeof(jobs[jobcount].command) - 1);
+    jobs[jobcount].command[sizeof(jobs[jobcount].command) - 1] = '\0';
+    jobs[jobcount].running = true;
+    jobcount++;
 }
 
-void remove_job(pid_t pid) {
-    for (int i = 0; i < job_count; ++i) {
+void removejob(pid_t pid) {
+    for (int i = 0; i < jobcount; i++) {
         if (jobs[i].pid == pid) {
-            for (int j = i; j < job_count - 1; ++j) {
+            // shift remaining jobs down
+            for (int j = i; j < jobcount - 1; j++) {
                 jobs[j] = jobs[j + 1];
             }
-            job_count--;
+            jobcount--;
             return;
         }
     }
 }
 
-void update_job_status(pid_t pid, bool is_running) {
-    for (int i = 0; i < job_count; ++i) {
+void updatejobstatus(pid_t pid, bool running) {
+    for (int i = 0; i < jobcount; i++) {
         if (jobs[i].pid == pid) {
-            jobs[i].is_running = is_running;
+            jobs[i].running = running;
             return;
         }
     }
 }
 
-static int compare_jobs(const void* a, const void* b) {
-    const BackgroundJob* ja = static_cast<const BackgroundJob*>(a);
-    const BackgroundJob* jb = static_cast<const BackgroundJob*>(b);
+static int comparejobs(const void* a, const void* b) {
+    const bgjob* ja = (const bgjob*)a;
+    const bgjob* jb = (const bgjob*)b;
     return strcmp(ja->command, jb->command);
 }
 
-void execute_activities() {
-    qsort(jobs, job_count, sizeof(BackgroundJob), compare_jobs);
-
-    for (int i = 0; i < job_count; ++i) {
+// list all background/stopped jobs
+void executeactivities() {
+    qsort(jobs, jobcount, sizeof(bgjob), comparejobs);
+    for (int i = 0; i < jobcount; i++) {
         std::cout << jobs[i].pid << " : " << jobs[i].command << " - "
-                  << (jobs[i].is_running ? "Running" : "Stopped") << "\n";
+                  << (jobs[i].running ? "Running" : "Stopped") << "\n";
     }
 }
 
-void execute_ping(char** args, int arg_count) {
-    if (arg_count < 3) {
+// send a signal to a process
+void executeping(char** args, int argc) {
+    if (argc < 3) {
         std::cout << "Usage: ping <pid> <signal_number>\n";
         return;
     }
 
     pid_t pid = atoi(args[1]);
-    int signal_num = atoi(args[2]);
+    int signum = atoi(args[2]);
+    int sig = signum % 32;
 
-    int sig = signal_num % 32;
     if (kill(pid, sig) < 0) {
         perror("Ping failed");
     } else {
@@ -81,8 +86,8 @@ void execute_ping(char** args, int arg_count) {
     }
 }
 
-static BackgroundJob* find_job(pid_t pid) {
-    for (int i = 0; i < job_count; ++i) {
+static bgjob* findjob(pid_t pid) {
+    for (int i = 0; i < jobcount; i++) {
         if (jobs[i].pid == pid) {
             return &jobs[i];
         }
@@ -90,35 +95,36 @@ static BackgroundJob* find_job(pid_t pid) {
     return nullptr;
 }
 
-void execute_fg(char** args, int arg_count) {
-    if (arg_count < 2) {
+// bring a background job to foreground
+void executefg(char** args, int argc) {
+    if (argc < 2) {
         std::cout << "Usage: fg <pid>\n";
         return;
     }
 
     pid_t pid = atoi(args[1]);
-    if (find_job(pid) == nullptr) {
+    if (findjob(pid) == nullptr) {
         std::cout << "No process with PID " << pid << " found in background\n";
         return;
     }
 
     kill(pid, SIGCONT);
-
-    int status;
     fg_pid = pid;
+    int status;
     waitpid(pid, &status, WUNTRACED);
     fg_pid = 0;
-    remove_job(pid);
+    removejob(pid);
 }
 
-void execute_bg(char** args, int arg_count) {
-    if (arg_count < 2) {
+// resume a stopped background job
+void executebg(char** args, int argc) {
+    if (argc < 2) {
         std::cout << "Usage: bg <pid>\n";
         return;
     }
 
     pid_t pid = atoi(args[1]);
-    if (find_job(pid) == nullptr) {
+    if (findjob(pid) == nullptr) {
         std::cout << "No process with PID " << pid << " found in background\n";
         return;
     }
@@ -126,11 +132,12 @@ void execute_bg(char** args, int arg_count) {
     if (kill(pid, SIGCONT) < 0) {
         perror("bg failed");
     } else {
-        update_job_status(pid, true);
+        updatejobstatus(pid, true);
     }
 }
 
-static void sigint_handler(int sig) {
+// ctrl-c handler
+static void siginthandler(int sig) {
     (void)sig;
     if (fg_pid > 0) {
         kill(-fg_pid, SIGINT);
@@ -139,7 +146,8 @@ static void sigint_handler(int sig) {
     }
 }
 
-static void sigtstp_handler(int sig) {
+// ctrl-z handler
+static void sigtstphandler(int sig) {
     (void)sig;
     if (fg_pid > 0) {
         kill(-fg_pid, SIGTSTP);
@@ -149,42 +157,43 @@ static void sigtstp_handler(int sig) {
     }
 }
 
-static void sigchld_handler(int sig) {
+// called when a background child exits
+static void sigchldhandler(int sig) {
     (void)sig;
     int status;
     pid_t pid;
 
-    for (int i = 0; i < job_count; ) {
+    for (int i = 0; i < jobcount; ) {
         pid = waitpid(jobs[i].pid, &status, WNOHANG);
         if (pid > 0) {
             std::cout << "\nProcess with PID " << pid << " exited cleanly\n";
-            for (int j = i; j < job_count - 1; ++j) {
+            for (int j = i; j < jobcount - 1; j++) {
                 jobs[j] = jobs[j + 1];
             }
-            job_count--;
+            jobcount--;
             displayprompt();
             std::cout.flush();
         } else {
-            ++i;
+            i++;
         }
     }
 }
 
-void init_signal_handlers() {
-    struct sigaction sa_int{}, sa_tstp{}, sa_chld{};
+void initsignalhandlers() {
+    struct sigaction sint{}, stp{}, chld{};
 
-    sa_int.sa_handler = sigint_handler;
-    sigemptyset(&sa_int.sa_mask);
-    sa_int.sa_flags = SA_RESTART;
-    sigaction(SIGINT, &sa_int, nullptr);
+    sint.sa_handler = siginthandler;
+    sigemptyset(&sint.sa_mask);
+    sint.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sint, nullptr);
 
-    sa_tstp.sa_handler = sigtstp_handler;
-    sigemptyset(&sa_tstp.sa_mask);
-    sa_tstp.sa_flags = SA_RESTART;
-    sigaction(SIGTSTP, &sa_tstp, nullptr);
+    stp.sa_handler = sigtstphandler;
+    sigemptyset(&stp.sa_mask);
+    stp.sa_flags = SA_RESTART;
+    sigaction(SIGTSTP, &stp, nullptr);
 
-    sa_chld.sa_handler = sigchld_handler;
-    sigemptyset(&sa_chld.sa_mask);
-    sa_chld.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-    sigaction(SIGCHLD, &sa_chld, nullptr);
+    chld.sa_handler = sigchldhandler;
+    sigemptyset(&chld.sa_mask);
+    chld.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    sigaction(SIGCHLD, &chld, nullptr);
 }

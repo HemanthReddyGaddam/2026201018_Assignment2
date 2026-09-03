@@ -1,3 +1,5 @@
+// search builtin - find file/folder recursively
+
 #include "builtin_search.h"
 #include <iostream>
 #include <dirent.h>
@@ -5,9 +7,12 @@
 #include <cstring>
 #include <climits>
 
-static bool recursive_search(const char* current_dir, const char* target_name) {
-    DIR* dir = opendir(current_dir);
-    if (!dir) return false;
+// recursively check all files and subdirs
+static bool searchdir(const char* dirpath, const char* name) {
+    DIR* dir = opendir(dirpath);
+    if (!dir) {
+        return false;
+    }
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
@@ -15,17 +20,19 @@ static bool recursive_search(const char* current_dir, const char* target_name) {
             continue;
         }
 
-        if (strcmp(entry->d_name, target_name) == 0) {
+        // found it
+        if (strcmp(entry->d_name, name) == 0) {
             closedir(dir);
             return true;
         }
 
-        char full_path[PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s/%s", current_dir, entry->d_name);
+        char fullpath[PATH_MAX];
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, entry->d_name);
 
+        // go into subdirectories
         struct stat st;
-        if (lstat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-            if (recursive_search(full_path, target_name)) {
+        if (lstat(fullpath, &st) == 0 && S_ISDIR(st.st_mode)) {
+            if (searchdir(fullpath, name)) {
                 closedir(dir);
                 return true;
             }
@@ -36,14 +43,13 @@ static bool recursive_search(const char* current_dir, const char* target_name) {
     return false;
 }
 
-void execute_search(char** args, int arg_count) {
-    if (arg_count != 2) {
+void executesearch(char** args, int argc) {
+    if (argc != 2) {
         std::cout << "Usage: search <file_or_folder_name>\n";
         return;
     }
 
-    bool found = recursive_search(".", args[1]);
-    if (found) {
+    if (searchdir(".", args[1])) {
         std::cout << "True\n";
     } else {
         std::cout << "False\n";

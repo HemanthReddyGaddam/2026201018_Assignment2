@@ -1,3 +1,5 @@
+// ls builtin - list files with -a and -l support
+
 #include "builtin_ls.h"
 #include "prompt.h"
 #include <iostream>
@@ -11,7 +13,8 @@
 #include <unistd.h>
 #include <climits>
 
-static void print_permissions(mode_t mode) {
+// print rwxrwxrwx style permissions
+static void printperms(mode_t mode) {
     std::cout << (S_ISDIR(mode) ? 'd' : S_ISLNK(mode) ? 'l' : '-');
     std::cout << ((mode & S_IRUSR) ? 'r' : '-');
     std::cout << ((mode & S_IWUSR) ? 'w' : '-');
@@ -24,37 +27,39 @@ static void print_permissions(mode_t mode) {
     std::cout << ((mode & S_IXOTH) ? 'x' : '-');
 }
 
-static void print_file_info(const char* full_path, const char* name) {
-    struct stat file_stat;
-    if (lstat(full_path, &file_stat) < 0) {
+// print one line for ls -l (perms, owner, size, date, name)
+static void printfileinfo(const char* fullpath, const char* name) {
+    struct stat st;
+    if (lstat(fullpath, &st) < 0) {
         perror("ls lstat error");
         return;
     }
 
-    print_permissions(file_stat.st_mode);
+    printperms(st.st_mode);
 
-    struct passwd* pw = getpwuid(file_stat.st_uid);
-    struct group* gr = getgrgid(file_stat.st_gid);
+    struct passwd* pw = getpwuid(st.st_uid);
+    struct group* gr = getgrgid(st.st_gid);
 
-    std::cout << " " << file_stat.st_nlink << " "
+    std::cout << " " << st.st_nlink << " "
               << (pw ? pw->pw_name : "unknown") << " "
               << (gr ? gr->gr_name : "unknown") << " "
-              << file_stat.st_size << " ";
+              << st.st_size << " ";
 
-    char time_buf[64];
-    struct tm* time_info = localtime(&file_stat.st_mtime);
-    strftime(time_buf, sizeof(time_buf), "%b %d %H:%M", time_info);
-    std::cout << time_buf << " " << name << "\n";
+    char timebuf[64];
+    struct tm* t = localtime(&st.st_mtime);
+    strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", t);
+    std::cout << timebuf << " " << name << "\n";
 }
 
-static void list_directory(const char* path, bool flag_a, bool flag_l, bool multiple_targets) {
+// list contents of one directory
+static void listdir(const char* path, bool showall, bool longfmt, bool many) {
     DIR* dir = opendir(path);
     if (!dir) {
-        // Check if target is a file instead of a directory
+        // maybe it's a file, not a folder
         struct stat st;
         if (lstat(path, &st) == 0) {
-            if (flag_l) {
-                print_file_info(path, path);
+            if (longfmt) {
+                printfileinfo(path, path);
             } else {
                 std::cout << path << "\n";
             }
@@ -64,20 +69,22 @@ static void list_directory(const char* path, bool flag_a, bool flag_l, bool mult
         return;
     }
 
-    if (multiple_targets) {
+    // print dir name when listing multiple targets
+    if (many) {
         std::cout << path << ":\n";
     }
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
-        if (!flag_a && entry->d_name[0] == '.') {
+        // skip hidden files unless -a
+        if (!showall && entry->d_name[0] == '.') {
             continue;
         }
 
-        if (flag_l) {
-            char full_path[PATH_MAX];
-            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-            print_file_info(full_path, entry->d_name);
+        if (longfmt) {
+            char fullpath[PATH_MAX];
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name);
+            printfileinfo(fullpath, entry->d_name);
         } else {
             std::cout << entry->d_name << "\n";
         }
@@ -86,43 +93,51 @@ static void list_directory(const char* path, bool flag_a, bool flag_l, bool mult
     closedir(dir);
 }
 
-static const char* resolve_path(const char* path, char* resolved, size_t resolved_size) {
+// handle ~ in paths like ~/test
+static const char* resolvepath(const char* path, char* buf, int buflen) {
     if (strcmp(path, "~") == 0) {
-        return SHELL_HOME;
+        return shell_home;
     }
     if (path[0] == '~' && path[1] == '/') {
-        snprintf(resolved, resolved_size, "%s%s", SHELL_HOME, path + 1);
-        return resolved;
+        snprintf(buf, buflen, "%s%s", shell_home, path + 1);
+        return buf;
     }
     return path;
 }
 
-void execute_ls(char** args, int arg_count) {
-    bool flag_a = false;
-    bool flag_l = false;
+void executels(char** args, int argc) {
+    bool showall = false;
+    bool longfmt = false;
 
     char* targets[128];
-    int target_count = 0;
+    int targetcount = 0;
 
-    for (int i = 1; i < arg_count; ++i) {
+    // parse flags and directory names from args
+    for (int i = 1; i < argc; i++) {
         if (args[i][0] == '-' && strlen(args[i]) > 1) {
-            for (size_t j = 1; j < strlen(args[i]); ++j) {
-                if (args[i][j] == 'a') flag_a = true;
-                else if (args[i][j] == 'l') flag_l = true;
+            // handle -a, -l, -al, -la etc
+            for (size_t j = 1; j < strlen(args[i]); j++) {
+                if (args[i][j] == 'a') {
+                    showall = true;
+                } else if (args[i][j] == 'l') {
+                    longfmt = true;
+                }
             }
         } else {
-            targets[target_count++] = args[i];
+            targets[targetcount++] = args[i];
         }
     }
 
-    if (target_count == 0) {
-        list_directory(".", flag_a, flag_l, false);
+    if (targetcount == 0) {
+        listdir(".", showall, longfmt, false);
     } else {
         char resolved[PATH_MAX];
-        for (int i = 0; i < target_count; ++i) {
-            const char* path = resolve_path(targets[i], resolved, sizeof(resolved));
-            list_directory(path, flag_a, flag_l, target_count > 1);
-            if (i < target_count - 1) std::cout << "\n";
+        for (int i = 0; i < targetcount; i++) {
+            const char* path = resolvepath(targets[i], resolved, sizeof(resolved));
+            listdir(path, showall, longfmt, targetcount > 1);
+            if (i < targetcount - 1) {
+                std::cout << "\n";
+            }
         }
     }
 }
