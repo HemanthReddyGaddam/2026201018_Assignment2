@@ -1,11 +1,11 @@
 // shell prompt - shows <user@host:path>
 
 #include "prompt.h"
-#include <iostream>
-#include <unistd.h>
-#include <pwd.h>
-#include <cstring>
-#include <climits>
+#include<iostream>
+#include<unistd.h>
+#include<pwd.h>
+#include<cstring>
+#include<climits>
 
 #ifndef host_name_max
 #define host_name_max 256
@@ -38,7 +38,7 @@ void displayprompt() {
         strncpy(cwd, "?", sizeof(cwd));
     }
 
-    std::cout << "<" << username << "@" << hostname << ":";
+    std::cout << "<" << username<< "@" << hostname<< ":";
 
     // if inside shell home, replace path with ~
     size_t homelen = strlen(shell_home);

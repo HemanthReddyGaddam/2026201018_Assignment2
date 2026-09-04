@@ -2,12 +2,12 @@
 
 #include "signals.h"
 #include "prompt.h"
-#include <iostream>
-#include <cstring>
-#include <signal.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <cstdlib>
+#include<iostream>
+#include<cstring>
+#include<signal.h>
+#include<sys/wait.h>
+#include<unistd.h>
+#include<cstdlib>
 
 // pid of whatever is running in foreground right now
 volatile pid_t fg_pid = 0;

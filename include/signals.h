@@ -1,10 +1,12 @@
 #ifndef SIGNALS_H
 #define SIGNALS_H
 
-#include <sys/types.h>
+#include<sys/types.h>
 
+// PID of whatever process is currently eating up the foreground
 extern volatile pid_t fg_pid;
 
+// Simple tracker for tasks running in the background
 struct bgjob {
     int jobid;
     pid_t pid;
@@ -12,6 +14,7 @@ struct bgjob {
     bool running;
 };
 
+// Setup signal traps, manage jobs, and handle process control commands
 void initsignalhandlers();
 void addjob(pid_t pid, const char* cmd);
 void removejob(pid_t pid);

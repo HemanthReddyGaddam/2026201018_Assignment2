@@ -2,10 +2,10 @@
 
 #include "history.h"
 #include "prompt.h"
-#include <iostream>
-#include <cstring>
-#include <cstdio>
-#include <cstdlib>
+#include<iostream>
+#include<cstring>
+#include<cstdio>
+#include<cstdlib>
 
 #define max_stored 20   // max commands to remember
 #define max_show 10     // default number history prints

@@ -2,16 +2,16 @@
 
 #include "builtin_ls.h"
 #include "prompt.h"
-#include <iostream>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <pwd.h>
-#include <grp.h>
-#include <time.h>
-#include <cstring>
-#include <unistd.h>
-#include <climits>
+#include<iostream>
+#include<dirent.h>
+#include<sys/stat.h>
+#include<sys/types.h>
+#include<pwd.h>
+#include<grp.h>
+#include<time.h>
+#include<cstring>
+#include<unistd.h>
+#include<climits>
 
 // print rwxrwxrwx style permissions
 static void printperms(mode_t mode) {
@@ -43,12 +43,12 @@ static void printfileinfo(const char* fullpath, const char* name) {
     std::cout << " " << st.st_nlink << " "
               << (pw ? pw->pw_name : "unknown") << " "
               << (gr ? gr->gr_name : "unknown") << " "
-              << st.st_size << " ";
+              << st.st_size<< " ";
 
     char timebuf[64];
     struct tm* t = localtime(&st.st_mtime);
     strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", t);
-    std::cout << timebuf << " " << name << "\n";
+    std::cout << timebuf << " " << name<< "\n";
 }
 
 // list contents of one directory
@@ -86,7 +86,7 @@ static void listdir(const char* path, bool showall, bool longfmt, bool many) {
             snprintf(fullpath, sizeof(fullpath), "%s/%s", path, entry->d_name);
             printfileinfo(fullpath, entry->d_name);
         } else {
-            std::cout << entry->d_name << "\n";
+            std::cout << entry->d_name<< "\n";
         }
     }
 

@@ -1,7 +1,7 @@
 // small helper to clean up quoted arguments
 
 #include "parser.h"
-#include <cstring>
+#include<cstring>
 
 // turns ".txt" into .txt so grep and other cmds work properly
 void stripquotes(char* token) {

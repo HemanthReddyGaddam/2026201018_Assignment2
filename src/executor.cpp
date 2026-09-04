@@ -2,11 +2,11 @@
 
 #include "executor.h"
 #include "signals.h"
-#include <iostream>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <sys/types.h>
-#include <cstring>
+#include<iostream>
+#include<unistd.h>
+#include<sys/wait.h>
+#include<sys/types.h>
+#include<cstring>
 
 void executesystemcmd(char** args, int argc, bool bg) {
     (void)argc;

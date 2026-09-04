@@ -14,9 +14,9 @@
 #include "autocomplete.h"
 #include "history.h"
 #include "parser.h"
-#include <iostream>
-#include <cstring>
-#include <unistd.h>
+#include<iostream>
+#include<cstring>
+#include<unistd.h>
 
 #define max_input 1024
 

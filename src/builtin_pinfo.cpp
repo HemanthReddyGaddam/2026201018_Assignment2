@@ -2,17 +2,17 @@
 
 #include "builtin_pinfo.h"
 #include "prompt.h"
-#include <iostream>
-#include <cstdio>
-#include <cstdlib>
-#include <unistd.h>
-#include <cstring>
-#include <climits>
-#include <sys/types.h>
+#include<iostream>
+#include<cstdio>
+#include<cstdlib>
+#include<unistd.h>
+#include<cstring>
+#include<climits>
+#include<sys/types.h>
 
 #ifdef __APPLE__
-#include <libproc.h>
-#include <sys/proc_info.h>
+#include<libproc.h>
+#include<sys/proc_info.h>
 #endif
 
 // print exe path, use ~ if inside shell home
@@ -100,7 +100,7 @@ void executepinfo(char** args, int argc) {
     }
 
     std::cout << "Process Status -- {" << status << "}\n";
-    std::cout << "memory -- " << vsize << " {Virtual Memory}\n";
+    std::cout << "memory -- " << vsize<< " {Virtual Memory}\n";
 
     // get executable path from /proc/<pid>/exe symlink
     char exelink[64];
@@ -146,7 +146,7 @@ void executepinfo(char** args, int argc) {
     unsigned long vsize = (st > 0) ? task.pti_virtual_size : 0;
 
     std::cout << "Process Status -- {" << status << "}\n";
-    std::cout << "memory -- " << vsize << " {Virtual Memory}\n";
+    std::cout << "memory -- " << vsize<< " {Virtual Memory}\n";
 
     char exepath[PATH_MAX];
     int ret = proc_pidpath(pid, exepath, sizeof(exepath));

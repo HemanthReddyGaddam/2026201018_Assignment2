@@ -11,11 +11,11 @@
 #include "builtin_pinfo.h"
 #include "builtin_search.h"
 #include "parser.h"
-#include <iostream>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <cstring>
-#include <cstdlib>
+#include<iostream>
+#include<unistd.h>
+#include<sys/wait.h>
+#include<cstring>
+#include<cstdlib>
 
 #define max_cmds 64
 #define max_pipes 63
@@ -96,7 +96,7 @@ void executepipeline(char* cmdline) {
                 close(pipefds[j]);
             }
 
-            // handle < > >> inside pipeline too
+            // handle< > >> inside pipeline too
             int savedin = -1, savedout = -1;
             if (!handleredirection(args, argc, savedin, savedout)) {
                 _exit(EXIT_FAILURE);

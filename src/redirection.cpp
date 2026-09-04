@@ -1,10 +1,10 @@
 // input/output redirection - < > >>
 
 #include "redirection.h"
-#include <iostream>
-#include <fcntl.h>
-#include <unistd.h>
-#include <cstring>
+#include<iostream>
+#include<fcntl.h>
+#include<unistd.h>
+#include<cstring>
 
 bool handleredirection(char** args, int& argc, int& savedin, int& savedout) {
     savedin = -1;
